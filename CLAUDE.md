@@ -16,7 +16,7 @@ Before first use:
 2. `npx clasp login` — authenticate with Google account
 3. Create a Google Apps Script project (script.google.com) and copy its script ID
 4. Update `erp/.clasp.json`: replace `REPLACE_WITH_YOUR_SCRIPT_ID` with the real script ID
-5. `npx clasp push` — upload code to GAS
+5. `npm run push` — upload code to GAS
 6. In the GAS console: Deploy → New deployment → Web app (execute as user, access: anyone with Google account)
 7. Open the web app URL and click **Setup** — this creates the Drive folder structure, Master Spreadsheet, templates, and seeds sample catalog data
 8. Go to Settings in the web app and enter business name, address, tax rate, etc.
@@ -25,10 +25,10 @@ Before first use:
 
 ```bash
 # Push code changes to Google Apps Script
-npx clasp push
+npm run push
 
 # Create a new versioned deployment (production release)
-npx clasp deploy --description "v1.x release notes"
+npm run deploy --description "v1.x release notes"
 
 # Open the GAS editor in browser
 npx clasp open
@@ -62,7 +62,7 @@ Data is stored across 5 sheets in a single Master Spreadsheet: Clients, Catalog,
 
 ## Key Gotchas
 
-- **No local testing** — GAS code cannot be run locally. All changes must be pushed with `npx clasp push` and tested in the live web app.
+- **No local testing** — GAS code cannot be run locally. All changes must be pushed with `npm run push` and tested in the live web app.
 - **Quotes must be `Approved` before conversion to invoice** — the code explicitly rejects any other status.
 - **PDF generation** works by cloning a Google Sheet template and exporting it as PDF. It locates templates by searching a Drive folder — if the folder structure is missing, regenerate it via the Setup flow.
 - **`items_json` has no schema validation** — malformed JSON silently becomes `[]` via `parseJsonSafely_()`.
