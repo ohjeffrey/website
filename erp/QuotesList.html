@@ -1,0 +1,42 @@
+<div id="view-quotes-list" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Quotes</h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <select class="form-control-custom" id="quotes-filter-status" onchange="filterQuotes()" style="width:auto;padding:8px 28px 8px 12px">
+        <option value="">All Status</option>
+        <option>Draft</option><option>Sent</option><option>Approved</option><option>Declined</option>
+      </select>
+      <button class="btn-primary-custom" onclick="showView('quote-new')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        New Quote
+      </button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="quotes-table-wrap">
+      <div class="empty-state"><div class="empty-icon">📋</div><p>No quotes yet.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Update status modal -->
+<div class="modal-overlay" id="quote-status-modal">
+  <div class="modal-box" style="max-width:360px">
+    <div class="modal-title">Update Quote Status</div>
+    <input type="hidden" id="qsm-id">
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control-custom" id="qsm-status">
+        <option>Draft</option><option>Sent</option><option>Approved</option><option>Declined</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('quote-status-modal')">Cancel</button>
+      <button class="btn-primary-custom" onclick="saveQuoteStatus()">Update</button>
+    </div>
+  </div>
+</div>

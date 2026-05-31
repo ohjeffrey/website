@@ -1,0 +1,58 @@
+<div id="view-clients" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Clients</h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <div class="search-bar">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="client-search" placeholder="Search clients..." oninput="filterClients(this.value)">
+      </div>
+      <button class="btn-primary-custom" onclick="openClientModal()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        Add Client
+      </button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="clients-table-wrap">
+      <div class="empty-state"><div class="empty-icon">👥</div><p>No clients yet. Add your first client!</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Client Modal -->
+<div class="modal-overlay" id="client-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="client-modal-title">Add Client</div>
+    <input type="hidden" id="client-modal-id">
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Full Name *</label>
+        <input class="form-control-custom" id="client-name" placeholder="e.g. Sarah Johnson">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-control-custom" id="client-email" type="email" placeholder="email@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input class="form-control-custom" id="client-phone" placeholder="(555) 000-0000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <input class="form-control-custom" id="client-address" placeholder="City, State">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-control-custom" id="client-notes" rows="2" placeholder="Any additional notes..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('client-modal')">Cancel</button>
+      <button class="btn-primary-custom" id="client-save-btn" onclick="saveClient()">Save Client</button>
+    </div>
+  </div>
+</div>

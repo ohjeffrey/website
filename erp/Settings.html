@@ -1,0 +1,70 @@
+<div id="view-settings" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Settings</h1>
+    </div>
+    <button class="btn-primary-custom" onclick="saveSettings()">Save Settings</button>
+  </div>
+
+  <div class="grid-2" style="align-items:start">
+    <div class="card">
+      <h3 style="font-size:1rem;margin-bottom:20px">Business Information</h3>
+      <div class="form-group">
+        <label class="form-label">Business Name</label>
+        <input class="form-control-custom" id="s-business-name" placeholder="Your Business Name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <textarea class="form-control-custom" id="s-address" rows="2" placeholder="123 Main Street, City, State 00000"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input class="form-control-custom" id="s-phone" placeholder="(555) 000-0000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-control-custom" id="s-email" type="email" placeholder="hello@yourbusiness.com">
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3 style="font-size:1rem;margin-bottom:20px">Quote & Invoice Defaults</h3>
+        <div class="form-group">
+          <label class="form-label">Default Tax Rate (%)</label>
+          <input class="form-control-custom" id="s-tax-rate" type="number" min="0" max="100" step="0.1" placeholder="8">
+          <div style="font-size:0.75rem;color:var(--color-muted);margin-top:4px">e.g. 8 for 8% tax. Enter 0 for no tax.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Payment Terms</label>
+          <select class="form-control-custom" id="s-payment-terms">
+            <option>Net 7</option><option>Net 14</option><option>Net 30</option>
+            <option>Due on Receipt</option><option>50% Deposit Required</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quote Valid For (days)</label>
+          <input class="form-control-custom" id="s-quote-validity" type="number" min="1" placeholder="30">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Currency</label>
+          <select class="form-control-custom" id="s-currency">
+            <option value="USD">USD ($)</option>
+            <option value="GBP">GBP (£)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="CAD">CAD (CA$)</option>
+            <option value="AUD">AUD (A$)</option>
+            <option value="GHS">GHS (₵)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card" style="border:1.5px solid #FEE2E2">
+        <h3 style="font-size:1rem;margin-bottom:8px;color:#991B1B">Danger Zone</h3>
+        <p style="font-size:0.82rem;color:var(--color-muted);margin-bottom:14px">Re-run setup if your Drive folders or spreadsheet were accidentally deleted. This will not overwrite existing data.</p>
+        <button class="btn-ghost" style="color:#991B1B;border:1.5px solid #FEE2E2" onclick="rerunSetup()">Re-run Setup</button>
+      </div>
+    </div>
+  </div>
+</div>

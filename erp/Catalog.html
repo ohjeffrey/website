@@ -1,0 +1,62 @@
+<div id="view-catalog" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Item Catalog</h1>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-outline-custom" onclick="loadCatalog(true)" id="catalog-toggle-inactive">Show Inactive</button>
+      <button class="btn-primary-custom" onclick="openCatalogModal()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        Add Item
+      </button>
+    </div>
+  </div>
+
+  <div class="tab-bar" id="catalog-tabs"></div>
+  <div id="catalog-grid">
+    <div class="empty-state"><div class="empty-icon">🌸</div><p>Loading catalog...</p></div>
+  </div>
+</div>
+
+<!-- Catalog Modal -->
+<div class="modal-overlay" id="catalog-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="catalog-modal-title">Add Item</div>
+    <input type="hidden" id="catalog-modal-id">
+    <div class="grid-2">
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Item Name *</label>
+        <input class="form-control-custom" id="catalog-name" placeholder="e.g. Rose Arch">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <select class="form-control-custom" id="catalog-category">
+          <option value="">Select category...</option>
+          <option>Flowers</option><option>Lighting</option><option>Furniture</option>
+          <option>Linens</option><option>Tableware</option><option>Backdrop</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unit</label>
+        <select class="form-control-custom" id="catalog-unit">
+          <option value="each">each</option><option value="set">set</option>
+          <option value="hour">hour</option><option value="table">table</option>
+          <option value="event">event</option><option value="ft">ft</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unit Price *</label>
+        <input class="form-control-custom" id="catalog-price" type="number" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input class="form-control-custom" id="catalog-desc" placeholder="Brief description...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('catalog-modal')">Cancel</button>
+      <button class="btn-primary-custom" id="catalog-save-btn" onclick="saveCatalogItem()">Save Item</button>
+    </div>
+  </div>
+</div>

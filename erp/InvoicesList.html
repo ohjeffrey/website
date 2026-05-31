@@ -1,0 +1,58 @@
+<div id="view-invoices-list" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Invoices</h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <select class="form-control-custom" id="invoices-filter-status" onchange="filterInvoices()" style="width:auto;padding:8px 28px 8px 12px">
+        <option value="">All Status</option>
+        <option>Draft</option><option>Sent</option><option>Paid</option><option>Overdue</option>
+      </select>
+      <button class="btn-primary-custom" onclick="showView('invoice-new')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        New Invoice
+      </button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="invoices-table-wrap">
+      <div class="empty-state"><div class="empty-icon">🧾</div><p>No invoices yet.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Paid Modal -->
+<div class="modal-overlay" id="mark-paid-modal">
+  <div class="modal-box" style="max-width:360px">
+    <div class="modal-title">Mark Invoice as Paid</div>
+    <input type="hidden" id="mp-invoice-id">
+    <div class="form-group">
+      <label class="form-label">Payment Date</label>
+      <input class="form-control-custom" type="date" id="mp-paid-date">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('mark-paid-modal')">Cancel</button>
+      <button class="btn-primary-custom" style="background:#5BB585" onclick="confirmMarkPaid()">Mark Paid</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice Status Modal -->
+<div class="modal-overlay" id="invoice-status-modal">
+  <div class="modal-box" style="max-width:360px">
+    <div class="modal-title">Update Invoice Status</div>
+    <input type="hidden" id="ism-id">
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control-custom" id="ism-status">
+        <option>Draft</option><option>Sent</option><option>Paid</option><option>Overdue</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('invoice-status-modal')">Cancel</button>
+      <button class="btn-primary-custom" onclick="saveInvoiceStatus()">Update</button>
+    </div>
+  </div>
+</div>
