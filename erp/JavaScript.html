@@ -1,0 +1,1042 @@
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+var state = {
+  clients: [],
+  catalog: [],
+  catalogByCategory: {},
+  quotes: [],
+  invoices: [],
+  settings: {},
+  quoteItems: [],        // items in quote wizard
+  invoiceItems: [],      // items in invoice form
+  currentQuoteId: null,
+  currentInvoiceId: null,
+  currentView: 'dashboard',
+  showInactiveCatalog: false,
+  currentCatalogFilter: 'All',
+  currentQuoteCatFilter: 'All',
+  currentInvCatFilter: 'All'
+};
+
+// ─── Helpers: google.script.run wrappers ────────────────────────────────────
+function gasCall(fnName, args) {
+  return new Promise(function(resolve, reject) {
+    var runner = google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject);
+    if (args === undefined) {
+      runner[fnName]();
+    } else if (!Array.isArray(args)) {
+      runner[fnName](args);
+    } else {
+      runner[fnName].apply(runner, args);
+    }
+  });
+}
+
+// ─── Router ─────────────────────────────────────────────────────────────────
+function showView(view) {
+  document.querySelectorAll('.view-section').forEach(function(el) {
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.nav-link-item').forEach(function(el) {
+    el.classList.remove('active');
+  });
+  var viewEl = document.getElementById('view-' + view);
+  if (viewEl) viewEl.style.display = 'block';
+  var navEl = document.getElementById('nav-' + view);
+  if (navEl) navEl.classList.add('active');
+  state.currentView = view;
+  closeSidebar();
+
+  if (view === 'dashboard') loadDashboard();
+  if (view === 'clients') loadClients();
+  if (view === 'catalog') loadCatalog(state.showInactiveCatalog);
+  if (view === 'quote-new') initQuoteWizard();
+  if (view === 'quotes-list') loadQuotesList();
+  if (view === 'invoice-new') initInvoiceForm();
+  if (view === 'invoices-list') loadInvoicesList();
+  if (view === 'settings') loadSettings();
+}
+
+// ─── Sidebar toggle ──────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+// ─── Modal ───────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('show');
+  }
+});
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+function toast(msg, type) {
+  var el = document.createElement('div');
+  el.className = 'toast-msg ' + (type || '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(function() { el.remove(); }, 3500);
+}
+
+// ─── Formatters ──────────────────────────────────────────────────────────────
+function fmt$(n) {
+  var num = parseFloat(n) || 0;
+  var sym = {'USD':'$','GBP':'£','EUR':'€','CAD':'CA$','AUD':'A$','GHS':'₵'}[state.settings.currency] || '$';
+  return sym + num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  var parts = String(d).split('-');
+  if (parts.length < 3) return d;
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[parseInt(parts[1], 10) - 1] + ' ' + parseInt(parts[2], 10) + ', ' + parts[0];
+}
+function statusBadge(s) {
+  var map = {Draft:'badge-draft',Sent:'badge-sent',Approved:'badge-approved',Declined:'badge-declined',Paid:'badge-paid',Overdue:'badge-overdue'};
+  return '<span class="badge-status ' + (map[s] || 'badge-draft') + '">' + (s || 'Draft') + '</span>';
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+function loadDashboard() {
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('en-US', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  ['kpi-quotes','kpi-invoices','kpi-outstanding','kpi-paid'].forEach(function(id) {
+    document.getElementById(id).textContent = '…';
+  });
+  gasCall('serverGetDashboardStats').then(function(stats) {
+    document.getElementById('kpi-quotes').textContent = stats.totalQuotes;
+    document.getElementById('kpi-invoices').textContent = stats.totalInvoices;
+    document.getElementById('kpi-outstanding').textContent = fmt$(stats.outstandingAmount);
+    document.getElementById('kpi-paid').textContent = fmt$(stats.paidThisMonth);
+
+    var wrap = document.getElementById('dash-activity-wrap');
+    if (!stats.recentActivity || !stats.recentActivity.length) {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>No activity yet. Create your first quote to get started!</p></div>';
+      return;
+    }
+    var rows = stats.recentActivity.map(function(a) {
+      return '<tr><td>' + fmtDate(a.date) + '</td><td>' + a.type + '</td><td><strong>' + a.id + '</strong></td><td>' + (a.client || '—') + '</td><td>' + fmt$(a.amount) + '</td><td>' + statusBadge(a.status) + '</td></tr>';
+    }).join('');
+    wrap.innerHTML = '<table class="erp-table"><thead><tr><th>Date</th><th>Type</th><th>ID</th><th>Client</th><th>Amount</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }).catch(function(e) {
+    toast('Failed to load dashboard: ' + e.message, 'error');
+  });
+}
+
+// ─── Clients ─────────────────────────────────────────────────────────────────
+function loadClients() {
+  gasCall('serverGetAllClients').then(function(clients) {
+    state.clients = clients || [];
+    renderClientsTable(state.clients);
+  }).catch(function(e) { toast('Failed to load clients: ' + e.message, 'error'); });
+}
+
+function renderClientsTable(clients) {
+  var wrap = document.getElementById('clients-table-wrap');
+  if (!clients || !clients.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><p>No clients yet. Add your first client!</p></div>';
+    return;
+  }
+  var rows = clients.map(function(c) {
+    return '<tr>' +
+      '<td><strong>' + esc(c.name) + '</strong></td>' +
+      '<td>' + esc(c.email || '—') + '</td>' +
+      '<td>' + esc(c.phone || '—') + '</td>' +
+      '<td>' + esc(c.address || '—') + '</td>' +
+      '<td>' +
+        '<button class="btn-ghost" title="Edit" onclick="openClientModal(\'' + c.id + '\')">' +
+          '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+        '</button>' +
+      '</td>' +
+      '</tr>';
+  }).join('');
+  wrap.innerHTML = '<table class="erp-table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function filterClients(q) {
+  var filtered = state.clients.filter(function(c) {
+    var query = q.toLowerCase();
+    return (c.name || '').toLowerCase().includes(query) ||
+           (c.email || '').toLowerCase().includes(query) ||
+           (c.phone || '').toLowerCase().includes(query);
+  });
+  renderClientsTable(filtered);
+}
+
+function openClientModal(id) {
+  var fields = ['name','email','phone','address','notes'];
+  if (id) {
+    var c = state.clients.find(function(x) { return x.id === id; });
+    if (!c) return;
+    document.getElementById('client-modal-title').textContent = 'Edit Client';
+    document.getElementById('client-modal-id').value = id;
+    fields.forEach(function(f) { document.getElementById('client-' + f).value = c[f] || ''; });
+  } else {
+    document.getElementById('client-modal-title').textContent = 'Add Client';
+    document.getElementById('client-modal-id').value = '';
+    fields.forEach(function(f) { document.getElementById('client-' + f).value = ''; });
+  }
+  openModal('client-modal');
+}
+
+function saveClient() {
+  var id = document.getElementById('client-modal-id').value;
+  var data = {
+    name: document.getElementById('client-name').value.trim(),
+    email: document.getElementById('client-email').value.trim(),
+    phone: document.getElementById('client-phone').value.trim(),
+    address: document.getElementById('client-address').value.trim(),
+    notes: document.getElementById('client-notes').value.trim()
+  };
+  if (!data.name) { toast('Name is required.', 'error'); return; }
+
+  var btn = document.getElementById('client-save-btn');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  var fn = id ? gasCall('serverUpdateClient', [id, data]) : gasCall('serverCreateClient', data);
+  fn.then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    closeModal('client-modal');
+    toast((id ? 'Client updated.' : 'Client created!'), 'success');
+    loadClients();
+  }).catch(function(e) {
+    toast('Error: ' + e.message, 'error');
+  }).finally(function() {
+    btn.innerHTML = 'Save Client';
+    btn.disabled = false;
+  });
+}
+
+// ─── Catalog ─────────────────────────────────────────────────────────────────
+function loadCatalog(includeInactive) {
+  state.showInactiveCatalog = !!includeInactive;
+  document.getElementById('catalog-toggle-inactive').textContent = includeInactive ? 'Hide Inactive' : 'Show Inactive';
+  gasCall('serverGetCatalogItemsByCategory').then(function(byCategory) {
+    gasCall('serverGetAllCatalogItems', includeInactive).then(function(items) {
+      state.catalog = items || [];
+      state.catalogByCategory = byCategory || {};
+      renderCatalogTabs();
+      renderCatalogGrid(state.currentCatalogFilter);
+    });
+  }).catch(function(e) { toast('Failed to load catalog: ' + e.message, 'error'); });
+}
+
+var ALL_CATS = ['All','Flowers','Lighting','Furniture','Linens','Tableware','Backdrop','Other'];
+
+function renderCatalogTabs() {
+  var tabs = document.getElementById('catalog-tabs');
+  tabs.innerHTML = ALL_CATS.map(function(cat) {
+    return '<button class="tab-btn' + (state.currentCatalogFilter === cat ? ' active' : '') + '" onclick="setCatalogFilter(\'' + cat + '\')">' + cat + '</button>';
+  }).join('');
+}
+
+function setCatalogFilter(cat) {
+  state.currentCatalogFilter = cat;
+  renderCatalogTabs();
+  renderCatalogGrid(cat);
+}
+
+function renderCatalogGrid(catFilter) {
+  var items = state.catalog.filter(function(item) {
+    return catFilter === 'All' || item.category === catFilter;
+  });
+  var grid = document.getElementById('catalog-grid');
+  if (!items.length) {
+    grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🌸</div><p>No items in this category.</p></div>';
+    return;
+  }
+  grid.innerHTML = '<div class="grid-3">' + items.map(function(item) {
+    var isActive = item.active === true || item.active === 'TRUE' || item.active === 'true';
+    return '<div class="catalog-card ' + (isActive ? '' : 'inactive') + '">' +
+      '<div class="cat-badge">' + esc(item.category) + '</div>' +
+      '<div class="item-name">' + esc(item.name) + '</div>' +
+      '<div class="item-price">' + fmt$(item.unit_price) + ' <span class="item-unit">/ ' + esc(item.unit) + '</span></div>' +
+      '<div class="item-desc">' + esc(item.description || '') + '</div>' +
+      '<div style="display:flex;gap:6px;margin-top:10px">' +
+        '<button class="btn-ghost" style="font-size:0.75rem" onclick="openCatalogModal(\'' + item.id + '\')">Edit</button>' +
+        '<button class="btn-ghost" style="font-size:0.75rem;color:' + (isActive ? '#991B1B' : '#065F46') + '" onclick="toggleCatalogItem(\'' + item.id + '\')">' + (isActive ? 'Deactivate' : 'Activate') + '</button>' +
+      '</div>' +
+      '</div>';
+  }).join('') + '</div>';
+}
+
+function openCatalogModal(id) {
+  if (id) {
+    var item = state.catalog.find(function(x) { return x.id === id; });
+    if (!item) return;
+    document.getElementById('catalog-modal-title').textContent = 'Edit Item';
+    document.getElementById('catalog-modal-id').value = id;
+    document.getElementById('catalog-name').value = item.name || '';
+    document.getElementById('catalog-category').value = item.category || '';
+    document.getElementById('catalog-unit').value = item.unit || 'each';
+    document.getElementById('catalog-price').value = item.unit_price || '';
+    document.getElementById('catalog-desc').value = item.description || '';
+  } else {
+    document.getElementById('catalog-modal-title').textContent = 'Add Item';
+    document.getElementById('catalog-modal-id').value = '';
+    ['catalog-name','catalog-price','catalog-desc'].forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('catalog-category').value = '';
+    document.getElementById('catalog-unit').value = 'each';
+  }
+  openModal('catalog-modal');
+}
+
+function saveCatalogItem() {
+  var id = document.getElementById('catalog-modal-id').value;
+  var data = {
+    name: document.getElementById('catalog-name').value.trim(),
+    category: document.getElementById('catalog-category').value,
+    unit: document.getElementById('catalog-unit').value,
+    unit_price: document.getElementById('catalog-price').value,
+    description: document.getElementById('catalog-desc').value.trim()
+  };
+  if (!data.name || !data.category || data.unit_price === '') { toast('Name, category, and price are required.', 'error'); return; }
+
+  var btn = document.getElementById('catalog-save-btn');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  var fn = id ? gasCall('serverUpdateCatalogItem', [id, data]) : gasCall('serverCreateCatalogItem', data);
+  fn.then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    closeModal('catalog-modal');
+    toast((id ? 'Item updated.' : 'Item added!'), 'success');
+    loadCatalog(state.showInactiveCatalog);
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); })
+  .finally(function() { btn.innerHTML = 'Save Item'; btn.disabled = false; });
+}
+
+function toggleCatalogItem(id) {
+  gasCall('serverToggleCatalogItemActive', id).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    toast(result.active ? 'Item activated.' : 'Item deactivated.', 'success');
+    loadCatalog(state.showInactiveCatalog);
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); });
+}
+
+// ─── Quote Wizard ─────────────────────────────────────────────────────────────
+function initQuoteWizard() {
+  state.quoteItems = [];
+  state.currentQuoteId = null;
+  resetQuoteWizard();
+
+  // Populate client dropdown
+  gasCall('serverGetAllClients').then(function(clients) {
+    state.clients = clients || [];
+    var sel = document.getElementById('qw-client');
+    sel.innerHTML = '<option value="">Select a client...</option>' +
+      clients.map(function(c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
+  });
+
+  // Set default valid_until
+  var d = new Date();
+  var validDays = parseInt(state.settings.quote_validity_days) || 30;
+  d.setDate(d.getDate() + validDays);
+  document.getElementById('qw-valid-until').value = d.toISOString().split('T')[0];
+
+  // Load tax rate from settings
+  var taxPct = Math.round((parseFloat(state.settings.tax_rate) || 0.08) * 100);
+  document.getElementById('qw-tax-rate').value = taxPct;
+
+  // Load catalog for step 2
+  gasCall('serverGetCatalogItemsByCategory').then(function(byCategory) {
+    state.catalogByCategory = byCategory || {};
+    gasCall('serverGetAllCatalogItems', false).then(function(items) {
+      state.catalog = items || [];
+    });
+  });
+}
+
+function resetQuoteWizard() {
+  state.quoteItems = [];
+  state.currentQuoteId = null;
+  ['qw-step-1','qw-step-2','qw-step-3','qw-step-4'].forEach(function(id, i) {
+    document.getElementById(id).style.display = i === 0 ? 'block' : 'none';
+  });
+  for (var i = 1; i <= 4; i++) {
+    var ws = document.getElementById('ws-' + i);
+    ws.className = 'wizard-step' + (i === 1 ? ' active' : '');
+  }
+  document.getElementById('qw-saved-info').style.display = 'none';
+  document.getElementById('qw-sheet-link').style.display = 'none';
+  document.getElementById('qw-pdf-link').style.display = 'none';
+  document.getElementById('btn-gen-pdf').disabled = true;
+}
+
+function wizardNext(step) {
+  if (step === 1) {
+    if (!document.getElementById('qw-client').value) { toast('Please select a client.', 'error'); return; }
+  }
+  if (step === 2) {
+    if (!state.quoteItems.length) { toast('Please add at least one item.', 'error'); return; }
+    renderQuoteReview();
+    recalcTotals();
+  }
+  if (step === 3) {
+    saveQuoteDraft();
+    return;
+  }
+  document.getElementById('qw-step-' + step).style.display = 'none';
+  document.getElementById('qw-step-' + (step + 1)).style.display = 'block';
+  document.getElementById('ws-' + step).className = 'wizard-step done';
+  document.getElementById('ws-' + (step + 1)).className = 'wizard-step active';
+
+  if (step === 1) renderQuoteCatalogStep();
+}
+
+function wizardBack(step) {
+  document.getElementById('qw-step-' + step).style.display = 'none';
+  document.getElementById('qw-step-' + (step - 1)).style.display = 'block';
+  document.getElementById('ws-' + step).className = 'wizard-step';
+  document.getElementById('ws-' + (step - 1)).className = 'wizard-step active';
+}
+
+function renderQuoteCatalogStep() {
+  var tabs = document.getElementById('qw-catalog-tabs');
+  var cats = ['All'].concat(Object.keys(state.catalogByCategory).filter(function(k) { return state.catalogByCategory[k].length > 0; }));
+  tabs.innerHTML = cats.map(function(cat) {
+    return '<button class="tab-btn' + (state.currentQuoteCatFilter === cat ? ' active' : '') + '" onclick="setQuoteCatFilter(\'' + cat + '\')">' + cat + '</button>';
+  }).join('');
+  renderQuoteCatalogGrid(state.currentQuoteCatFilter);
+  renderSelectedItems();
+}
+
+function setQuoteCatFilter(cat) {
+  state.currentQuoteCatFilter = cat;
+  document.querySelectorAll('#qw-catalog-tabs .tab-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.textContent === cat);
+  });
+  renderQuoteCatalogGrid(cat);
+}
+
+function renderQuoteCatalogGrid(catFilter) {
+  var items = state.catalog.filter(function(item) {
+    return catFilter === 'All' || item.category === catFilter;
+  });
+  var grid = document.getElementById('qw-catalog-grid');
+  if (!items.length) { grid.innerHTML = '<div class="empty-state"><p>No items in this category.</p></div>'; return; }
+  grid.innerHTML = '<div class="grid-3" style="gap:10px">' + items.map(function(item) {
+    return '<div class="catalog-card" style="padding:12px;cursor:pointer" onclick="addQuoteItem(\'' + item.id + '\')">' +
+      '<div class="cat-badge" style="font-size:0.6rem">' + esc(item.category) + '</div>' +
+      '<div class="item-name" style="font-size:0.82rem">' + esc(item.name) + '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">' +
+        '<div class="item-price" style="font-size:0.92rem">' + fmt$(item.unit_price) + '</div>' +
+        '<button class="btn-primary-custom" style="padding:4px 10px;font-size:0.75rem">+ Add</button>' +
+      '</div>' +
+      '</div>';
+  }).join('') + '</div>';
+}
+
+function addQuoteItem(catalogId) {
+  var item = state.catalog.find(function(x) { return x.id === catalogId; });
+  if (!item) return;
+  var existing = state.quoteItems.find(function(x) { return x.item_id === catalogId; });
+  if (existing) {
+    existing.qty += 1;
+    existing.line_total = existing.qty * existing.unit_price;
+  } else {
+    state.quoteItems.push({
+      item_id: catalogId,
+      name: item.name,
+      qty: 1,
+      unit_price: parseFloat(item.unit_price) || 0,
+      line_total: parseFloat(item.unit_price) || 0
+    });
+  }
+  renderSelectedItems();
+}
+
+function removeQuoteItem(idx) {
+  state.quoteItems.splice(idx, 1);
+  renderSelectedItems();
+}
+
+function renderSelectedItems() {
+  var wrap = document.getElementById('qw-selected-items');
+  if (!state.quoteItems.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:24px"><div class="empty-icon" style="font-size:1.5rem">🛒</div><p>No items added yet</p></div>';
+    document.getElementById('qw-running-subtotal').textContent = '$0.00';
+    return;
+  }
+  var subtotal = 0;
+  wrap.innerHTML = state.quoteItems.map(function(item, i) {
+    subtotal += (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0);
+    return '<div class="quote-item-row">' +
+      '<div class="quote-item-name">' + esc(item.name) + '</div>' +
+      '<input class="qty-input" type="number" min="1" value="' + item.qty + '" onchange="updateQuoteItemQty(' + i + ',this.value)">' +
+      '<input class="price-input" type="number" min="0" step="0.01" value="' + item.unit_price.toFixed(2) + '" onchange="updateQuoteItemPrice(' + i + ',this.value)">' +
+      '<div class="line-total">' + fmt$(item.line_total) + '</div>' +
+      '<button class="btn-ghost" style="color:#991B1B;padding:4px" onclick="removeQuoteItem(' + i + ')">✕</button>' +
+      '</div>';
+  }).join('');
+  document.getElementById('qw-running-subtotal').textContent = fmt$(subtotal);
+}
+
+function updateQuoteItemQty(i, val) {
+  state.quoteItems[i].qty = parseFloat(val) || 1;
+  state.quoteItems[i].line_total = state.quoteItems[i].qty * state.quoteItems[i].unit_price;
+  renderSelectedItems();
+}
+function updateQuoteItemPrice(i, val) {
+  state.quoteItems[i].unit_price = parseFloat(val) || 0;
+  state.quoteItems[i].line_total = state.quoteItems[i].qty * state.quoteItems[i].unit_price;
+  renderSelectedItems();
+}
+
+function renderQuoteReview() {
+  var wrap = document.getElementById('qw-review-items');
+  wrap.innerHTML = state.quoteItems.map(function(item) {
+    return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--color-border);font-size:0.87rem">' +
+      '<span>' + esc(item.name) + ' × ' + item.qty + '</span>' +
+      '<span style="font-weight:600">' + fmt$(item.line_total) + '</span>' +
+      '</div>';
+  }).join('');
+}
+
+function recalcTotals() {
+  var subtotal = state.quoteItems.reduce(function(s, item) { return s + item.line_total; }, 0);
+  var discountVal = parseFloat(document.getElementById('qw-discount-val').value) || 0;
+  var discountType = document.getElementById('qw-discount-type').value;
+  var taxRatePct = parseFloat(document.getElementById('qw-tax-rate').value) || 0;
+  var discount = discountType === 'percent' ? subtotal * discountVal / 100 : discountVal;
+  var taxable = subtotal - discount;
+  var tax = taxable * taxRatePct / 100;
+  var total = taxable + tax;
+  document.getElementById('qw-total-subtotal').textContent = fmt$(subtotal);
+  document.getElementById('qw-total-tax').textContent = fmt$(tax);
+  document.getElementById('qw-total-final').textContent = fmt$(total);
+}
+
+function saveQuoteDraft() {
+  var taxRatePct = parseFloat(document.getElementById('qw-tax-rate').value) || 0;
+  var data = {
+    client_id: document.getElementById('qw-client').value,
+    event_date: document.getElementById('qw-event-date').value,
+    event_type: document.getElementById('qw-event-type').value,
+    venue: document.getElementById('qw-venue').value,
+    valid_until: document.getElementById('qw-valid-until').value,
+    notes: document.getElementById('qw-notes').value,
+    items: state.quoteItems,
+    discount: parseFloat(document.getElementById('qw-discount-val').value) || 0,
+    discount_type: document.getElementById('qw-discount-type').value,
+    tax_rate: taxRatePct / 100
+  };
+
+  gasCall('serverCreateQuote', data).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    state.currentQuoteId = result.data.id;
+    document.getElementById('qw-step-3').style.display = 'none';
+    document.getElementById('qw-step-4').style.display = 'block';
+    document.getElementById('ws-3').className = 'wizard-step done';
+    document.getElementById('ws-4').className = 'wizard-step active';
+    document.getElementById('qw-saved-info').style.display = 'block';
+    document.getElementById('qw-saved-id').textContent = result.data.id;
+    toast('Quote ' + result.data.id + ' saved!', 'success');
+  }).catch(function(e) { toast('Error saving quote: ' + e.message, 'error'); });
+}
+
+function generateQuoteSheet() {
+  if (!state.currentQuoteId) { toast('Save the quote first.', 'error'); return; }
+  var btn = document.getElementById('btn-gen-sheet');
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+  btn.disabled = true;
+  gasCall('serverGenerateQuoteDocuments', state.currentQuoteId).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    document.getElementById('qw-sheet-url').href = result.sheetUrl;
+    document.getElementById('qw-sheet-link').style.display = 'block';
+    document.getElementById('btn-gen-pdf').disabled = false;
+    toast('Sheet generated!', 'success');
+    // Also store pdf url if already generated
+    if (result.pdfUrl) {
+      document.getElementById('qw-pdf-url').href = result.pdfUrl;
+      document.getElementById('qw-pdf-link').style.display = 'block';
+    }
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); })
+  .finally(function() { btn.innerHTML = 'Regenerate Sheet'; btn.disabled = false; });
+}
+
+function generateQuotePDF() {
+  if (!state.currentQuoteId) { toast('Generate the sheet first.', 'error'); return; }
+  var btn = document.getElementById('btn-gen-pdf');
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+  btn.disabled = true;
+  gasCall('serverGenerateQuoteDocuments', state.currentQuoteId).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    if (result.pdfUrl) {
+      document.getElementById('qw-pdf-url').href = result.pdfUrl;
+      document.getElementById('qw-pdf-link').style.display = 'block';
+    }
+    toast('PDF generated!', 'success');
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); })
+  .finally(function() { btn.innerHTML = 'Regenerate PDF'; btn.disabled = false; });
+}
+
+// ─── Quotes List ──────────────────────────────────────────────────────────────
+function loadQuotesList() {
+  gasCall('serverGetAllQuotes').then(function(quotes) {
+    state.quotes = quotes || [];
+    gasCall('serverGetAllClients').then(function(clients) {
+      state.clients = clients || [];
+      renderQuotesList(state.quotes);
+    });
+  }).catch(function(e) { toast('Failed to load quotes: ' + e.message, 'error'); });
+}
+
+function filterQuotes() {
+  var statusFilter = document.getElementById('quotes-filter-status').value;
+  var filtered = state.quotes.filter(function(q) {
+    return !statusFilter || q.status === statusFilter;
+  });
+  renderQuotesList(filtered);
+}
+
+function renderQuotesList(quotes) {
+  var wrap = document.getElementById('quotes-table-wrap');
+  if (!quotes || !quotes.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>No quotes found.</p></div>';
+    return;
+  }
+  function clientName(id) {
+    var c = state.clients.find(function(x) { return x.id === id; });
+    return c ? c.name : id;
+  }
+  var rows = quotes.map(function(q) {
+    var actions = '';
+    if (q.sheet_url) actions += '<a href="' + q.sheet_url + '" target="_blank" class="btn-ghost" title="Open Sheet"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg></a>';
+    if (q.pdf_url) actions += '<a href="' + q.pdf_url + '" target="_blank" class="btn-ghost" title="Download PDF"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></a>';
+    actions += '<button class="btn-ghost" title="Update status" onclick="openQuoteStatusModal(\'' + q.id + '\',\'' + q.status + '\')"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+    if (q.status === 'Approved') actions += '<button class="btn-ghost" style="color:#065F46" title="Convert to Invoice" onclick="doConvertToInvoice(\'' + q.id + '\')">→ Invoice</button>';
+    return '<tr><td><strong>' + esc(q.id) + '</strong></td>' +
+      '<td>' + esc(clientName(q.client_id)) + '</td>' +
+      '<td>' + fmtDate(q.event_date) + '</td>' +
+      '<td>' + esc(q.event_type || '—') + '</td>' +
+      '<td>' + fmt$(q.total) + '</td>' +
+      '<td>' + statusBadge(q.status) + '</td>' +
+      '<td>' + fmtDate(q.created_date) + '</td>' +
+      '<td style="white-space:nowrap">' + actions + '</td></tr>';
+  }).join('');
+  wrap.innerHTML = '<table class="erp-table"><thead><tr><th>Quote #</th><th>Client</th><th>Event Date</th><th>Type</th><th>Total</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function openQuoteStatusModal(id, currentStatus) {
+  document.getElementById('qsm-id').value = id;
+  document.getElementById('qsm-status').value = currentStatus;
+  openModal('quote-status-modal');
+}
+function saveQuoteStatus() {
+  var id = document.getElementById('qsm-id').value;
+  var status = document.getElementById('qsm-status').value;
+  gasCall('serverUpdateQuoteStatus', [id, status]).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    closeModal('quote-status-modal');
+    toast('Status updated.', 'success');
+    loadQuotesList();
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); });
+}
+function doConvertToInvoice(quoteId) {
+  if (!confirm('Convert quote ' + quoteId + ' to an invoice?')) return;
+  gasCall('serverConvertQuoteToInvoice', quoteId).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    toast('Invoice ' + result.data.id + ' created!', 'success');
+    showView('invoices-list');
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); });
+}
+
+// ─── Invoice Form ─────────────────────────────────────────────────────────────
+function initInvoiceForm() {
+  state.invoiceItems = [];
+  state.currentInvoiceId = null;
+  document.getElementById('inv-saved-result').style.display = 'none';
+  document.getElementById('inv-save-btn').style.display = '';
+  document.getElementById('inv-sheet-url').style.display = 'none';
+  document.getElementById('inv-pdf-url').style.display = 'none';
+
+  // Default due date
+  var d = new Date();
+  var payDays = parseInt(String(state.settings.payment_terms || '14').replace(/\D/g, '')) || 14;
+  d.setDate(d.getDate() + payDays);
+  document.getElementById('inv-due-date').value = d.toISOString().split('T')[0];
+
+  var taxPct = Math.round((parseFloat(state.settings.tax_rate) || 0.08) * 100);
+  document.getElementById('inv-tax-rate').value = taxPct;
+
+  gasCall('serverGetAllClients').then(function(clients) {
+    state.clients = clients || [];
+    var sel = document.getElementById('inv-client');
+    sel.innerHTML = '<option value="">Select client...</option>' +
+      clients.map(function(c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
+  });
+
+  gasCall('serverGetAllQuotes').then(function(quotes) {
+    state.quotes = quotes || [];
+    var approved = quotes.filter(function(q) { return q.status === 'Approved'; });
+    var sel = document.getElementById('inv-quote-select');
+    sel.innerHTML = '<option value="">Choose a quote...</option>' +
+      approved.map(function(q) { return '<option value="' + q.id + '">' + q.id + ' — ' + fmt$(q.total) + '</option>'; }).join('');
+  });
+
+  gasCall('serverGetAllCatalogItems', false).then(function(items) { state.catalog = items || []; });
+  gasCall('serverGetCatalogItemsByCategory').then(function(byCategory) { state.catalogByCategory = byCategory || {}; });
+
+  renderInvItems();
+}
+
+function toggleInvoiceSource() {
+  var isQuote = document.getElementById('inv-src-quote').checked;
+  document.getElementById('inv-quote-picker').style.display = isQuote ? 'block' : 'none';
+}
+
+function autofillFromQuote(quoteId) {
+  if (!quoteId) return;
+  gasCall('serverGetQuote', quoteId).then(function(quote) {
+    if (!quote) return;
+    document.getElementById('inv-client').value = quote.client_id;
+    state.invoiceItems = (quote.items || []).map(function(item) { return Object.assign({}, item); });
+    document.getElementById('inv-discount-val').value = quote.discount || 0;
+    document.getElementById('inv-discount-type').value = quote.discount_type || 'flat';
+    document.getElementById('inv-tax-rate').value = Math.round((parseFloat(quote.tax_rate) || 0) * 100);
+    document.getElementById('inv-notes').value = quote.notes || '';
+    renderInvItems();
+    recalcInvTotals();
+  });
+}
+
+function renderInvItems() {
+  var wrap = document.getElementById('inv-items-list');
+  if (!state.invoiceItems.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:16px"><p>No items added.</p></div>';
+    recalcInvTotals();
+    return;
+  }
+  wrap.innerHTML = state.invoiceItems.map(function(item, i) {
+    return '<div class="quote-item-row">' +
+      '<div class="quote-item-name">' + esc(item.name) + '</div>' +
+      '<input class="qty-input" type="number" min="1" value="' + item.qty + '" onchange="updateInvItemQty(' + i + ',this.value)">' +
+      '<input class="price-input" type="number" min="0" step="0.01" value="' + (parseFloat(item.unit_price)||0).toFixed(2) + '" onchange="updateInvItemPrice(' + i + ',this.value)">' +
+      '<div class="line-total">' + fmt$(item.line_total) + '</div>' +
+      '<button class="btn-ghost" style="color:#991B1B;padding:4px" onclick="removeInvItem(' + i + ')">✕</button>' +
+      '</div>';
+  }).join('');
+  recalcInvTotals();
+}
+
+function updateInvItemQty(i, val) {
+  state.invoiceItems[i].qty = parseFloat(val) || 1;
+  state.invoiceItems[i].line_total = state.invoiceItems[i].qty * state.invoiceItems[i].unit_price;
+  renderInvItems();
+}
+function updateInvItemPrice(i, val) {
+  state.invoiceItems[i].unit_price = parseFloat(val) || 0;
+  state.invoiceItems[i].line_total = state.invoiceItems[i].qty * state.invoiceItems[i].unit_price;
+  renderInvItems();
+}
+function removeInvItem(i) {
+  state.invoiceItems.splice(i, 1);
+  renderInvItems();
+}
+
+function recalcInvTotals() {
+  var subtotal = state.invoiceItems.reduce(function(s, item) { return s + (item.line_total || 0); }, 0);
+  var discountVal = parseFloat(document.getElementById('inv-discount-val').value) || 0;
+  var discountType = document.getElementById('inv-discount-type').value;
+  var taxRatePct = parseFloat(document.getElementById('inv-tax-rate').value) || 0;
+  var discount = discountType === 'percent' ? subtotal * discountVal / 100 : discountVal;
+  var taxable = subtotal - discount;
+  var tax = taxable * taxRatePct / 100;
+  document.getElementById('inv-total-subtotal').textContent = fmt$(subtotal);
+  document.getElementById('inv-total-tax').textContent = fmt$(tax);
+  document.getElementById('inv-total-final').textContent = fmt$(taxable + tax);
+}
+
+function openAddInvItemModal() {
+  var tabs = document.getElementById('inv-item-tabs');
+  var cats = ['All'].concat(Object.keys(state.catalogByCategory).filter(function(k) { return state.catalogByCategory[k].length > 0; }));
+  tabs.innerHTML = cats.map(function(cat) {
+    return '<button class="tab-btn' + (state.currentInvCatFilter === cat ? ' active' : '') + '" onclick="setInvCatFilter(\'' + cat + '\')">' + cat + '</button>';
+  }).join('');
+  renderInvCatalogGrid('All');
+  openModal('inv-item-modal');
+}
+
+function setInvCatFilter(cat) {
+  state.currentInvCatFilter = cat;
+  document.querySelectorAll('#inv-item-tabs .tab-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.textContent === cat);
+  });
+  renderInvCatalogGrid(cat);
+}
+
+function renderInvCatalogGrid(catFilter) {
+  var items = state.catalog.filter(function(item) {
+    return catFilter === 'All' || item.category === catFilter;
+  });
+  var grid = document.getElementById('inv-item-catalog-grid');
+  grid.innerHTML = '<div class="grid-3" style="gap:8px">' + items.map(function(item) {
+    return '<div class="catalog-card" style="padding:10px;cursor:pointer" onclick="addInvCatalogItem(\'' + item.id + '\')">' +
+      '<div class="item-name" style="font-size:0.82rem">' + esc(item.name) + '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">' +
+        '<div class="item-price" style="font-size:0.88rem">' + fmt$(item.unit_price) + '</div>' +
+        '<button class="btn-primary-custom" style="padding:3px 8px;font-size:0.72rem">+ Add</button>' +
+      '</div></div>';
+  }).join('') + '</div>';
+}
+
+function addInvCatalogItem(catalogId) {
+  var item = state.catalog.find(function(x) { return x.id === catalogId; });
+  if (!item) return;
+  var existing = state.invoiceItems.find(function(x) { return x.item_id === catalogId; });
+  if (existing) {
+    existing.qty += 1;
+    existing.line_total = existing.qty * existing.unit_price;
+  } else {
+    state.invoiceItems.push({ item_id: catalogId, name: item.name, qty: 1, unit_price: parseFloat(item.unit_price) || 0, line_total: parseFloat(item.unit_price) || 0 });
+  }
+  renderInvItems();
+}
+
+function addCustomInvItem() {
+  var name = document.getElementById('inv-custom-name').value.trim();
+  var price = parseFloat(document.getElementById('inv-custom-price').value) || 0;
+  if (!name) { toast('Enter item name.', 'error'); return; }
+  state.invoiceItems.push({ item_id: '', name: name, qty: 1, unit_price: price, line_total: price });
+  document.getElementById('inv-custom-name').value = '';
+  document.getElementById('inv-custom-price').value = '';
+  renderInvItems();
+  toast('Item added.', 'success');
+}
+
+function saveInvoice() {
+  if (!document.getElementById('inv-client').value) { toast('Please select a client.', 'error'); return; }
+  if (!state.invoiceItems.length) { toast('Add at least one item.', 'error'); return; }
+
+  var taxRatePct = parseFloat(document.getElementById('inv-tax-rate').value) || 0;
+  var data = {
+    client_id: document.getElementById('inv-client').value,
+    due_date: document.getElementById('inv-due-date').value,
+    items: state.invoiceItems,
+    discount: parseFloat(document.getElementById('inv-discount-val').value) || 0,
+    discount_type: document.getElementById('inv-discount-type').value,
+    tax_rate: taxRatePct / 100,
+    notes: document.getElementById('inv-notes').value
+  };
+
+  var isFromQuote = document.getElementById('inv-src-quote').checked;
+  if (isFromQuote) data.quote_id = document.getElementById('inv-quote-select').value;
+
+  var btn = document.getElementById('inv-save-btn');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+
+  gasCall('serverCreateInvoice', data).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    state.currentInvoiceId = result.data.id;
+    document.getElementById('inv-save-btn').style.display = 'none';
+    document.getElementById('inv-saved-result').style.display = 'block';
+    document.getElementById('inv-saved-id').textContent = result.data.id;
+    toast('Invoice ' + result.data.id + ' saved!', 'success');
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); })
+  .finally(function() { btn.innerHTML = 'Save Invoice'; btn.disabled = false; });
+}
+
+function generateInvSheet() {
+  if (!state.currentInvoiceId) { toast('Save the invoice first.', 'error'); return; }
+  var btn = document.getElementById('btn-inv-gen-sheet');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+  gasCall('serverGenerateInvoiceDocuments', state.currentInvoiceId).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    var el = document.getElementById('inv-sheet-url');
+    el.href = result.sheetUrl;
+    el.style.display = 'inline-flex';
+    document.getElementById('btn-inv-gen-pdf').disabled = false;
+    if (result.pdfUrl) {
+      var pel = document.getElementById('inv-pdf-url');
+      pel.href = result.pdfUrl;
+      pel.style.display = 'inline-flex';
+    }
+    toast('Invoice sheet generated!', 'success');
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); })
+  .finally(function() { btn.innerHTML = 'Regenerate Sheet'; btn.disabled = false; });
+}
+
+function generateInvPDF() {
+  if (!state.currentInvoiceId) { toast('Generate the sheet first.', 'error'); return; }
+  var btn = document.getElementById('btn-inv-gen-pdf');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+  gasCall('serverGenerateInvoiceDocuments', state.currentInvoiceId).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    if (result.pdfUrl) {
+      var el = document.getElementById('inv-pdf-url');
+      el.href = result.pdfUrl;
+      el.style.display = 'inline-flex';
+    }
+    toast('PDF generated!', 'success');
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); })
+  .finally(function() { btn.innerHTML = 'Regenerate PDF'; btn.disabled = false; });
+}
+
+function resetInvoiceForm() {
+  initInvoiceForm();
+  document.getElementById('inv-save-btn').style.display = '';
+}
+
+// ─── Invoices List ────────────────────────────────────────────────────────────
+function loadInvoicesList() {
+  gasCall('serverGetAllInvoices').then(function(invoices) {
+    state.invoices = invoices || [];
+    gasCall('serverGetAllClients').then(function(clients) {
+      state.clients = clients || [];
+      renderInvoicesList(state.invoices);
+    });
+  }).catch(function(e) { toast('Failed to load invoices: ' + e.message, 'error'); });
+}
+
+function filterInvoices() {
+  var statusFilter = document.getElementById('invoices-filter-status').value;
+  var filtered = state.invoices.filter(function(inv) {
+    return !statusFilter || inv.status === statusFilter;
+  });
+  renderInvoicesList(filtered);
+}
+
+function renderInvoicesList(invoices) {
+  var wrap = document.getElementById('invoices-table-wrap');
+  if (!invoices || !invoices.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><p>No invoices found.</p></div>';
+    return;
+  }
+  function clientName(id) {
+    var c = state.clients.find(function(x) { return x.id === id; });
+    return c ? c.name : id;
+  }
+  var today = new Date().toISOString().split('T')[0];
+  var rows = invoices.map(function(inv) {
+    var isOverdue = inv.status === 'Sent' && inv.due_date && inv.due_date < today;
+    var actions = '';
+    if (inv.status !== 'Paid') actions += '<button class="btn-ghost" style="color:#065F46" title="Mark as Paid" onclick="openMarkPaid(\'' + inv.id + '\')">✓ Paid</button>';
+    if (inv.sheet_url) actions += '<a href="' + inv.sheet_url + '" target="_blank" class="btn-ghost" title="Open Sheet"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg></a>';
+    if (inv.pdf_url) actions += '<a href="' + inv.pdf_url + '" target="_blank" class="btn-ghost" title="Download PDF"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></a>';
+    actions += '<button class="btn-ghost" title="Update status" onclick="openInvoiceStatusModal(\'' + inv.id + '\',\'' + inv.status + '\')"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+    return '<tr class="' + (isOverdue ? 'row-overdue' : '') + '">' +
+      '<td><strong>' + esc(inv.id) + '</strong></td>' +
+      '<td>' + esc(inv.quote_id || '—') + '</td>' +
+      '<td>' + esc(clientName(inv.client_id)) + '</td>' +
+      '<td>' + fmtDate(inv.due_date) + '</td>' +
+      '<td>' + fmtDate(inv.paid_date) + '</td>' +
+      '<td>' + fmt$(inv.total) + '</td>' +
+      '<td>' + statusBadge(isOverdue && inv.status !== 'Paid' ? 'Overdue' : inv.status) + '</td>' +
+      '<td style="white-space:nowrap">' + actions + '</td>' +
+      '</tr>';
+  }).join('');
+  wrap.innerHTML = '<table class="erp-table"><thead><tr><th>Invoice #</th><th>Quote</th><th>Client</th><th>Due Date</th><th>Paid Date</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function openMarkPaid(id) {
+  document.getElementById('mp-invoice-id').value = id;
+  document.getElementById('mp-paid-date').value = new Date().toISOString().split('T')[0];
+  openModal('mark-paid-modal');
+}
+function confirmMarkPaid() {
+  var id = document.getElementById('mp-invoice-id').value;
+  var paidDate = document.getElementById('mp-paid-date').value;
+  gasCall('serverMarkInvoicePaid', [id, paidDate]).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    closeModal('mark-paid-modal');
+    toast('Invoice marked as paid!', 'success');
+    loadInvoicesList();
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); });
+}
+
+function openInvoiceStatusModal(id, currentStatus) {
+  document.getElementById('ism-id').value = id;
+  document.getElementById('ism-status').value = currentStatus;
+  openModal('invoice-status-modal');
+}
+function saveInvoiceStatus() {
+  var id = document.getElementById('ism-id').value;
+  var status = document.getElementById('ism-status').value;
+  gasCall('serverUpdateInvoiceStatus', [id, status]).then(function(result) {
+    if (result && result.success === false) throw new Error(result.error);
+    closeModal('invoice-status-modal');
+    toast('Status updated.', 'success');
+    loadInvoicesList();
+  }).catch(function(e) { toast('Error: ' + e.message, 'error'); });
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function loadSettings() {
+  gasCall('serverGetSettings').then(function(settings) {
+    state.settings = settings || {};
+    document.getElementById('s-business-name').value = settings.business_name || '';
+    document.getElementById('s-address').value = settings.address || '';
+    document.getElementById('s-phone').value = settings.phone || '';
+    document.getElementById('s-email').value = settings.email || '';
+    document.getElementById('s-tax-rate').value = Math.round((parseFloat(settings.tax_rate) || 0) * 100);
+    document.getElementById('s-payment-terms').value = settings.payment_terms || 'Net 14';
+    document.getElementById('s-quote-validity').value = settings.quote_validity_days || 30;
+    document.getElementById('s-currency').value = settings.currency || 'USD';
+
+    // Update brand name in sidebar
+    var bn = settings.business_name;
+    if (bn) document.getElementById('brand-name').textContent = bn;
+  }).catch(function(e) { toast('Failed to load settings: ' + e.message, 'error'); });
+}
+
+function saveSettings() {
+  var taxPct = parseFloat(document.getElementById('s-tax-rate').value) || 0;
+  var data = {
+    business_name: document.getElementById('s-business-name').value.trim(),
+    address: document.getElementById('s-address').value.trim(),
+    phone: document.getElementById('s-phone').value.trim(),
+    email: document.getElementById('s-email').value.trim(),
+    tax_rate: (taxPct / 100).toFixed(4),
+    payment_terms: document.getElementById('s-payment-terms').value,
+    quote_validity_days: document.getElementById('s-quote-validity').value,
+    currency: document.getElementById('s-currency').value
+  };
+  gasCall('serverUpdateSettings', data).then(function(result) {
+    state.settings = result || state.settings;
+    var bn = data.business_name;
+    if (bn) document.getElementById('brand-name').textContent = bn;
+    toast('Settings saved!', 'success');
+  }).catch(function(e) { toast('Error saving settings: ' + e.message, 'error'); });
+}
+
+function rerunSetup() {
+  if (!confirm('Re-run setup? This will create any missing folders/spreadsheets. Existing data is not affected.')) return;
+  gasCall('serverRunSetup').then(function(result) {
+    toast('Setup complete!', 'success');
+  }).catch(function(e) { toast('Setup error: ' + e.message, 'error'); });
+}
+
+// ─── XSS-safe escaping ────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  gasCall('serverGetSettings').then(function(settings) {
+    state.settings = settings || {};
+    if (settings && settings.business_name) {
+      document.getElementById('brand-name').textContent = settings.business_name;
+    }
+    showView('dashboard');
+  }).catch(function() {
+    showView('dashboard');
+  });
+});
+</script>

@@ -1,0 +1,121 @@
+<div id="view-invoice-new" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>New Invoice</h1>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:16px;font-size:1rem">Invoice Source</h3>
+    <div style="display:flex;gap:16px;margin-bottom:20px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;font-weight:600">
+        <input type="radio" name="inv-source" value="quote" id="inv-src-quote" checked onchange="toggleInvoiceSource()"> From Approved Quote
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;font-weight:600">
+        <input type="radio" name="inv-source" value="manual" id="inv-src-manual" onchange="toggleInvoiceSource()"> Manual Entry
+      </label>
+    </div>
+
+    <div id="inv-quote-picker">
+      <div class="form-group">
+        <label class="form-label">Select Approved Quote</label>
+        <select class="form-control-custom" id="inv-quote-select" onchange="autofillFromQuote(this.value)">
+          <option value="">Choose a quote...</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Client *</label>
+        <select class="form-control-custom" id="inv-client" id="inv-client">
+          <option value="">Select client...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Due Date *</label>
+        <input class="form-control-custom" type="date" id="inv-due-date">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:16px;font-size:1rem">Line Items</h3>
+    <div id="inv-items-list" style="margin-bottom:12px"></div>
+    <button class="btn-outline-custom" onclick="openAddInvItemModal()" style="font-size:0.82rem;padding:7px 14px">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Add Item
+    </button>
+  </div>
+
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:24px;align-items:start">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control-custom" id="inv-notes" rows="3" placeholder="Payment instructions, bank details, or notes..."></textarea>
+      </div>
+      <div class="totals-box">
+        <div class="totals-row">
+          <span>Subtotal</span>
+          <span id="inv-total-subtotal">$0.00</span>
+        </div>
+        <div class="totals-row" style="align-items:center;gap:8px">
+          <span>Discount</span>
+          <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+            <select id="inv-discount-type" onchange="recalcInvTotals()" style="border:1.5px solid var(--color-border);border-radius:6px;padding:3px 6px;font-size:0.8rem">
+              <option value="flat">$</option><option value="percent">%</option>
+            </select>
+            <input id="inv-discount-val" type="number" min="0" step="0.01" value="0" oninput="recalcInvTotals()" style="width:80px;border:1.5px solid var(--color-border);border-radius:6px;padding:3px 8px;font-size:0.85rem;text-align:right">
+          </div>
+        </div>
+        <div class="totals-row">
+          <span>Tax Rate</span>
+          <div style="display:flex;align-items:center;gap:4px;margin-left:auto">
+            <input id="inv-tax-rate" type="number" min="0" max="100" step="0.1" value="8" oninput="recalcInvTotals()" style="width:60px;border:1.5px solid var(--color-border);border-radius:6px;padding:3px 8px;font-size:0.85rem;text-align:right">
+            <span style="font-size:0.85rem">%</span>
+          </div>
+        </div>
+        <div class="totals-row"><span>Tax</span><span id="inv-total-tax">$0.00</span></div>
+        <div class="totals-row total-final"><span>TOTAL</span><span id="inv-total-final">$0.00</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+    <button class="btn-ghost" onclick="showView('invoices-list')">Cancel</button>
+    <button class="btn-primary-custom" id="inv-save-btn" onclick="saveInvoice()">Save Invoice</button>
+  </div>
+
+  <!-- Saved invoice results -->
+  <div id="inv-saved-result" style="display:none" class="card">
+    <div style="font-weight:700;font-size:1rem;margin-bottom:14px">Invoice created! <span id="inv-saved-id" style="color:var(--color-primary)"></span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn-outline-custom" id="btn-inv-gen-sheet" onclick="generateInvSheet()">Generate Sheet</button>
+      <button class="btn-outline-custom" id="btn-inv-gen-pdf" onclick="generateInvPDF()" disabled>Generate PDF</button>
+      <a id="inv-sheet-url" href="#" target="_blank" class="doc-link" style="display:none">Open Sheet</a>
+      <a id="inv-pdf-url" href="#" target="_blank" class="doc-link" style="display:none">Download PDF</a>
+      <button class="btn-primary-custom" onclick="resetInvoiceForm()" style="margin-left:auto">New Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add item to invoice modal -->
+<div class="modal-overlay" id="inv-item-modal">
+  <div class="modal-box modal-lg">
+    <div class="modal-title">Add Item</div>
+    <div class="tab-bar" id="inv-item-tabs" style="margin-bottom:16px"></div>
+    <div id="inv-item-catalog-grid" style="max-height:360px;overflow-y:auto;margin-bottom:16px"></div>
+    <div style="padding-top:12px;border-top:1px solid var(--color-border)">
+      <div style="font-size:0.8rem;font-weight:700;color:var(--color-muted);margin-bottom:8px">OR ADD CUSTOM ITEM</div>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">Name</label><input class="form-control-custom" id="inv-custom-name" placeholder="Item name"></div>
+        <div class="form-group"><label class="form-label">Unit Price</label><input class="form-control-custom" id="inv-custom-price" type="number" placeholder="0.00"></div>
+      </div>
+      <button class="btn-outline-custom" onclick="addCustomInvItem()" style="font-size:0.82rem;padding:7px 14px">Add Custom Item</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('inv-item-modal')">Done</button>
+    </div>
+  </div>
+</div>

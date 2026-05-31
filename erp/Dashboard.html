@@ -1,0 +1,41 @@
+<div id="view-dashboard" class="view-section" style="display:none">
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="hamburger" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Dashboard</h1>
+    </div>
+    <div style="font-size:0.82rem;color:var(--color-muted)" id="dash-date"></div>
+  </div>
+
+  <div class="grid-4" style="margin-bottom:24px">
+    <div class="kpi-card">
+      <div class="kpi-label">Total Quotes</div>
+      <div class="kpi-value" id="kpi-quotes">—</div>
+      <div class="kpi-icon">📋</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Invoices</div>
+      <div class="kpi-value" id="kpi-invoices">—</div>
+      <div class="kpi-icon">🧾</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Outstanding</div>
+      <div class="kpi-value" id="kpi-outstanding">—</div>
+      <div class="kpi-icon">⏳</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Paid This Month</div>
+      <div class="kpi-value" id="kpi-paid">—</div>
+      <div class="kpi-icon">✅</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:1rem">Recent Activity</h3>
+    </div>
+    <div id="dash-activity-wrap">
+      <div class="empty-state"><div class="empty-icon">📊</div><p>Loading activity...</p></div>
+    </div>
+  </div>
+</div>
