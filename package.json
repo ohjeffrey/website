@@ -1,0 +1,30 @@
+{
+  "name": "google-erp",
+  "version": "1.0.0",
+  "description": "Invoice generator that saves to google sheets",
+  "homepage": "https://github.com/ohjeffrey/google-erp#readme",
+  "bugs": {
+    "url": "https://github.com/ohjeffrey/google-erp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:ohjeffrey/google-erp.git"
+  },
+  "license": "ISC",
+  "author": "@Ohjeffrey",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test",
+    "push": "cd erp && npx clasp push",
+    "deploy": "cd erp && npx clasp deploy",
+    "lint": "eslint --ext .gs erp/"
+  },
+  "dependencies": {
+    "@google/clasp": "^2.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1"
+  }
+}
