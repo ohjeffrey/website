@@ -7,15 +7,17 @@ var state = {
   quotes: [],
   invoices: [],
   settings: {},
-  quoteItems: [],        // items in quote wizard
-  invoiceItems: [],      // items in invoice form
+  quoteItems: [],
+  invoiceItems: [],
   currentQuoteId: null,
   currentInvoiceId: null,
   currentView: 'dashboard',
   showInactiveCatalog: false,
   currentCatalogFilter: 'All',
   currentQuoteCatFilter: 'All',
-  currentInvCatFilter: 'All'
+  currentInvCatFilter: 'All',
+  selectedClientId: null,
+  selectedClientName: null
 };
 
 // ─── Helpers: google.script.run wrappers ────────────────────────────────────
@@ -327,12 +329,9 @@ function initQuoteWizard() {
   state.currentQuoteId = null;
   resetQuoteWizard();
 
-  // Populate client dropdown
+  // Load clients for typeahead
   gasCall('serverGetAllClients').then(function(clients) {
     state.clients = clients || [];
-    var sel = document.getElementById('qw-client');
-    sel.innerHTML = '<option value="">Select a client...</option>' +
-      clients.map(function(c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
   });
 
   // Set default valid_until
@@ -368,11 +367,32 @@ function resetQuoteWizard() {
   document.getElementById('qw-sheet-link').style.display = 'none';
   document.getElementById('qw-pdf-link').style.display = 'none';
   document.getElementById('btn-gen-pdf').disabled = true;
+
+  // Clear Step 1 fields
+  document.getElementById('qw-client-input').value = '';
+  document.getElementById('qw-client-id').value = '';
+  document.getElementById('qw-client-dropdown').style.display = 'none';
+  document.getElementById('qw-client-tag').style.display = 'none';
+  state.selectedClientId = null;
+  state.selectedClientName = null;
+  document.getElementById('qw-event-date').value = '';
+  document.getElementById('qw-event-type').value = '';
+  document.getElementById('qw-venue').value = '';
+  document.getElementById('qw-notes').value = '';
+
+  // Reset Step 3 pricing fields
+  document.getElementById('qw-discount-val').value = '0';
+  document.getElementById('qw-discount-type').value = 'flat';
+  document.getElementById('qw-tax-rate').value = Math.round((parseFloat(state.settings.tax_rate) || 0.08) * 100);
+
+  // Update discount currency symbol
+  var sym = {'USD':'$','GBP':'£','EUR':'€','CAD':'CA$','AUD':'A$','GHS':'₵'}[state.settings.currency] || '$';
+  document.getElementById('qw-discount-type').options[0].text = sym;
 }
 
 function wizardNext(step) {
   if (step === 1) {
-    if (!document.getElementById('qw-client').value) { toast('Please select a client.', 'error'); return; }
+    if (state.selectedClientId === null) { toast('Please select or enter a client name.', 'error'); return; }
   }
   if (step === 2) {
     if (!state.quoteItems.length) { toast('Please add at least one item.', 'error'); return; }
@@ -435,6 +455,22 @@ function renderQuoteCatalogGrid(catFilter) {
 }
 
 function addQuoteItem(catalogId) {
+  // Flush any unsaved DOM qty/price edits back to state before modifying
+  var qtyInputs = document.querySelectorAll('#qw-selected-items .qty-input');
+  var priceInputs = document.querySelectorAll('#qw-selected-items .price-input');
+  qtyInputs.forEach(function(el, i) {
+    if (state.quoteItems[i]) {
+      state.quoteItems[i].qty = parseFloat(el.value) || 1;
+      state.quoteItems[i].line_total = state.quoteItems[i].qty * state.quoteItems[i].unit_price;
+    }
+  });
+  priceInputs.forEach(function(el, i) {
+    if (state.quoteItems[i]) {
+      state.quoteItems[i].unit_price = parseFloat(el.value) || 0;
+      state.quoteItems[i].line_total = state.quoteItems[i].qty * state.quoteItems[i].unit_price;
+    }
+  });
+
   var item = state.catalog.find(function(x) { return x.id === catalogId; });
   if (!item) return;
   var existing = state.quoteItems.find(function(x) { return x.item_id === catalogId; });
@@ -458,6 +494,69 @@ function removeQuoteItem(idx) {
   renderSelectedItems();
 }
 
+// ─── Client Typeahead ────────────────────────────────────────────────────────
+function onClientInput() {
+  var query = document.getElementById('qw-client-input').value.trim();
+  var dropdown = document.getElementById('qw-client-dropdown');
+
+  if (!query) {
+    dropdown.style.display = 'none';
+    state.selectedClientId = null;
+    state.selectedClientName = null;
+    document.getElementById('qw-client-id').value = '';
+    document.getElementById('qw-client-tag').style.display = 'none';
+    return;
+  }
+
+  var matches = state.clients.filter(function(c) {
+    return (c.name || '').toLowerCase().indexOf(query.toLowerCase()) !== -1;
+  }).slice(0, 8);
+
+  var html = matches.map(function(c) {
+    return '<div class="qw-client-option" onclick="selectExistingClient(\'' + esc(c.id) + '\',\'' + esc(c.name).replace(/'/g, '&#39;') + '\')">' +
+      '<span>' + esc(c.name) + '</span>' +
+      (c.email ? '<span style="font-size:0.75rem;color:var(--color-muted)">' + esc(c.email.substring(0, 30)) + '</span>' : '') +
+      '</div>';
+  }).join('');
+
+  html += '<div class="qw-client-option qw-client-new" onclick="selectNewClient()">+ Add &ldquo;' + esc(query) + '&rdquo; as a new client</div>';
+
+  dropdown.innerHTML = html;
+  dropdown.style.display = 'block';
+}
+
+function selectExistingClient(id, name) {
+  state.selectedClientId = id;
+  state.selectedClientName = name;
+  document.getElementById('qw-client-input').value = name;
+  document.getElementById('qw-client-id').value = id;
+  document.getElementById('qw-client-dropdown').style.display = 'none';
+  var tag = document.getElementById('qw-client-tag');
+  tag.style.display = 'block';
+  tag.style.color = 'var(--color-muted)';
+  tag.textContent = 'Existing client selected';
+}
+
+function selectNewClient() {
+  var name = document.getElementById('qw-client-input').value.trim();
+  if (!name) return;
+  state.selectedClientId = '';
+  state.selectedClientName = name;
+  document.getElementById('qw-client-id').value = '';
+  document.getElementById('qw-client-dropdown').style.display = 'none';
+  var tag = document.getElementById('qw-client-tag');
+  tag.style.display = 'block';
+  tag.style.color = 'var(--color-primary)';
+  tag.textContent = 'New client — will be saved on completion';
+}
+
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('qw-client-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('qw-client-dropdown').style.display = 'none';
+  }
+});
+
 function renderSelectedItems() {
   var wrap = document.getElementById('qw-selected-items');
   if (!state.quoteItems.length) {
@@ -470,8 +569,8 @@ function renderSelectedItems() {
     subtotal += (parseFloat(item.qty) || 0) * (parseFloat(item.unit_price) || 0);
     return '<div class="quote-item-row">' +
       '<div class="quote-item-name">' + esc(item.name) + '</div>' +
-      '<input class="qty-input" type="number" min="1" value="' + item.qty + '" onchange="updateQuoteItemQty(' + i + ',this.value)">' +
-      '<input class="price-input" type="number" min="0" step="0.01" value="' + item.unit_price.toFixed(2) + '" onchange="updateQuoteItemPrice(' + i + ',this.value)">' +
+      '<input class="qty-input" type="number" min="1" value="' + item.qty + '" oninput="updateQuoteItemQty(' + i + ',this.value)">' +
+      '<input class="price-input" type="number" min="0" step="0.01" value="' + item.unit_price.toFixed(2) + '" oninput="updateQuoteItemPrice(' + i + ',this.value)">' +
       '<div class="line-total">' + fmt$(item.line_total) + '</div>' +
       '<button class="btn-ghost" style="color:#991B1B;padding:4px" onclick="removeQuoteItem(' + i + ')">✕</button>' +
       '</div>';
@@ -515,9 +614,11 @@ function recalcTotals() {
 }
 
 function saveQuoteDraft() {
+  var btn = document.querySelector('#qw-step-3 .btn-primary-custom');
+  if (btn) btn.disabled = true;
+
   var taxRatePct = parseFloat(document.getElementById('qw-tax-rate').value) || 0;
-  var data = {
-    client_id: document.getElementById('qw-client').value,
+  var quoteData = {
     event_date: document.getElementById('qw-event-date').value,
     event_type: document.getElementById('qw-event-type').value,
     venue: document.getElementById('qw-venue').value,
@@ -529,17 +630,40 @@ function saveQuoteDraft() {
     tax_rate: taxRatePct / 100
   };
 
-  gasCall('serverCreateQuote', data).then(function(result) {
-    if (result && result.success === false) throw new Error(result.error);
-    state.currentQuoteId = result.data.id;
-    document.getElementById('qw-step-3').style.display = 'none';
-    document.getElementById('qw-step-4').style.display = 'block';
-    document.getElementById('ws-3').className = 'wizard-step done';
-    document.getElementById('ws-4').className = 'wizard-step active';
-    document.getElementById('qw-saved-info').style.display = 'block';
-    document.getElementById('qw-saved-id').textContent = result.data.id;
-    toast('Quote ' + result.data.id + ' saved!', 'success');
-  }).catch(function(e) { toast('Error saving quote: ' + e.message, 'error'); });
+  function doSave(clientId) {
+    quoteData.client_id = clientId;
+    gasCall('serverCreateQuote', quoteData).then(function(result) {
+      if (result && result.success === false) throw new Error(result.error);
+      state.currentQuoteId = result.data.id;
+      document.getElementById('qw-step-3').style.display = 'none';
+      document.getElementById('qw-step-4').style.display = 'block';
+      document.getElementById('ws-3').className = 'wizard-step done';
+      document.getElementById('ws-4').className = 'wizard-step active';
+      document.getElementById('qw-saved-info').style.display = 'block';
+      document.getElementById('qw-saved-id').textContent = result.data.id;
+      toast('Quote ' + result.data.id + ' saved!', 'success');
+    }).catch(function(e) {
+      toast('Error saving quote: ' + e.message, 'error');
+    }).finally(function() {
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  if (state.selectedClientId) {
+    doSave(state.selectedClientId);
+  } else {
+    // New client — create first, then save quote
+    gasCall('serverCreateClient', { name: state.selectedClientName }).then(function(result) {
+      if (result && result.success === false) throw new Error(result.error);
+      var newId = result.data.id;
+      state.selectedClientId = newId;
+      state.clients.push(result.data);
+      doSave(newId);
+    }).catch(function(e) {
+      toast('Error creating client: ' + e.message, 'error');
+      if (btn) btn.disabled = false;
+    });
+  }
 }
 
 function generateQuoteSheet() {

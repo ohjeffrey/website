@@ -35,9 +35,14 @@
     <div class="grid-2">
       <div class="form-group" style="grid-column:1/-1">
         <label class="form-label">Client *</label>
-        <select class="form-control-custom" id="qw-client">
-          <option value="">Select a client...</option>
-        </select>
+        <div style="position:relative" id="qw-client-wrap">
+          <input class="form-control-custom" id="qw-client-input" type="text"
+            placeholder="Search or add a client..." autocomplete="off"
+            oninput="onClientInput()" onfocus="onClientInput()">
+          <div id="qw-client-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--color-primary);border-top:none;border-radius:0 0 8px 8px;z-index:50;max-height:220px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,0.1)"></div>
+        </div>
+        <input type="hidden" id="qw-client-id" value="">
+        <div id="qw-client-tag" style="display:none;margin-top:6px;font-size:0.8rem"></div>
       </div>
       <div class="form-group">
         <label class="form-label">Event Date</label>
@@ -182,7 +187,7 @@
       <button class="btn-ghost" onclick="wizardBack(4)">← Back</button>
       <div style="display:flex;gap:10px">
         <button class="btn-outline-custom" onclick="showView('quotes-list')">View All Quotes</button>
-        <button class="btn-primary-custom" onclick="resetQuoteWizard()">
+        <button class="btn-primary-custom" onclick="initQuoteWizard()">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           New Quote
         </button>

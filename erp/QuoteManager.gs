@@ -137,8 +137,9 @@ function convertQuoteToInvoice(quoteId) {
 function generateQuoteDocuments(quoteId) {
   try {
     var sheetUrl = generateQuoteSheet(quoteId);
+    updateRow(SHEET_NAMES.QUOTES, quoteId, { sheet_url: sheetUrl });
     var pdfUrl = generateQuotePDF(quoteId);
-    updateRow(SHEET_NAMES.QUOTES, quoteId, { sheet_url: sheetUrl, pdf_url: pdfUrl });
+    updateRow(SHEET_NAMES.QUOTES, quoteId, { pdf_url: pdfUrl });
     return { success: true, sheetUrl: sheetUrl, pdfUrl: pdfUrl };
   } catch(e) { return handleError_('generateQuoteDocuments', e); }
 }
