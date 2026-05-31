@@ -298,18 +298,18 @@
   /* Selected items in quote builder */
   .quote-item-row {
     display: grid;
-    grid-template-columns: 1fr 80px 120px 100px 32px;
-    gap: 8px;
+    grid-template-columns: 1fr 48px 80px 68px 28px;
+    gap: 6px;
     align-items: center;
     padding: 8px;
     background: var(--color-primary-lt);
     border-radius: 8px;
     margin-bottom: 6px;
   }
-  .quote-item-name { font-size: 0.85rem; font-weight: 600; }
+  .quote-item-name { font-size: 0.85rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .qty-input { width: 100%; text-align: center; border: 1.5px solid var(--color-border); border-radius: 6px; padding: 5px; font-size: 0.85rem; }
   .price-input { width: 100%; border: 1.5px solid var(--color-border); border-radius: 6px; padding: 5px; font-size: 0.85rem; }
-  .line-total { font-size: 0.85rem; font-weight: 700; text-align: right; color: var(--color-primary-dk); }
+  .line-total { font-size: 0.85rem; font-weight: 700; text-align: right; color: var(--color-primary-dk); white-space: nowrap; }
 
   /* Totals summary */
   .totals-box { background: var(--color-primary-lt); border-radius: 10px; padding: 16px 20px; }

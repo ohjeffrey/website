@@ -16,7 +16,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test",
-    "push": "cd erp && npx clasp push",
+    "push": "cd erp && npx clasp push --force",
     "deploy": "cd erp && npx clasp deploy",
     "lint": "eslint --ext .gs erp/"
   },

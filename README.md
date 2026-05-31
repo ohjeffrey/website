@@ -38,24 +38,27 @@ npm install
 # 2. Authenticate with Google
 npx clasp login
 
-# 3. Create a new Google Apps Script project at script.google.com
+# 3. Enable the Apps Script API (one-time, per Google account)
+#    Visit https://script.google.com/home/usersettings and turn on "Google Apps Script API"
+
+# 4. Create a new Google Apps Script project at script.google.com
 #    Copy the script ID from Project Settings → IDs
 
-# 4. Set your script ID
+# 5. Set your script ID
 # Edit erp/.clasp.json and replace REPLACE_WITH_YOUR_SCRIPT_ID
 
-# 5. Push the code
+# 6. Push the code
 npm run push
 
-# 6. Deploy as a web app
+# 7. Deploy as a web app
 #    In the GAS editor: Deploy → New deployment → Web app
 #    Execute as: User accessing the web app
 #    Who has access: Anyone with a Google account
 
-# 7. Open the web app URL and click Setup
+# 8. Open the web app URL and click Setup
 #    This creates the Drive folder structure, Master Spreadsheet, and sample catalog data
 
-# 8. Go to Settings and enter your business details
+# 9. Go to Settings and enter your business details
 ```
 
 ## Development
